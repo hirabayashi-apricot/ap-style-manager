@@ -3,11 +3,12 @@
 Plugin Name: AP Style Tag Manager
 Plugin URI: https://apricot-design.com/
 Description: エディターで使用するスタイルやHTMLテンプレートをJSONで管理し、ボタンから簡単に挿入できるプラグイン
-Version: 1.2.0
+Version: 1.2.1
 Author: Apricot Design
 Author URI: https://apricot-design.com/
 License: GPL2+
 Text Domain: ap-style-manager
+Update URI: https://github.com/hirabayashi-apricot/ap-style-manager
 */
 
 require_once __DIR__ . '/vendor/plugin-update-checker/plugin-update-checker.php';
