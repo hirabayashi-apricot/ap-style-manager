@@ -3,8 +3,8 @@ document.addEventListener("DOMContentLoaded", function () {
 	const editorStyles    = document.getElementById("apsm-editor-styles")
 	const editorBlocks    = document.getElementById("apsm-editor-blocks")
 	const jsonField       = document.getElementById("apsm-json")
-	const addStyle        = document.getElementById("add-style")
-	const addBlock        = document.getElementById("add-block")
+	const addStyle        = document.getElementById("apsm-add-style")
+	const addBlock        = document.getElementById("apsm-add-block")
 	const postTypeSelect  = document.getElementById("apsm-posttype")
 	const form            = document.querySelector("form")
 	const validationMessage = document.getElementById("apsm-validation")
@@ -126,9 +126,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
 			item.classList.remove("is-error")
 
-			const tag = item.querySelector(".item-tag").value.trim().toLowerCase()
-			const cls = normalizeClassValue(item.querySelector(".item-class").value)
-			const title = item.querySelector(".item-title").value.trim()
+			const tag = item.querySelector(".apsm-item-tag").value.trim().toLowerCase()
+			const cls = normalizeClassValue(item.querySelector(".apsm-item-class").value)
+			const title = item.querySelector(".apsm-item-title").value.trim()
 
 			if(!title && !tag && !cls){
 				return
@@ -182,21 +182,22 @@ document.addEventListener("DOMContentLoaded", function () {
 		el.className = "apsm-item"
 
 		el.innerHTML = `
-			<input class="item-title" placeholder="タイトル" value="${escapeAttr(d.title)}">
-			<input class="item-tag" placeholder="タグ (h2 / span など)" value="${escapeAttr(tag)}">
-			<input class="item-class" placeholder="class" value="${escapeAttr((d.attributes && d.attributes.class) || "")}">
-			<button type="button" class="move-up button" aria-label="1つ上へ">↑</button>
-			<button type="button" class="move-down button" aria-label="1つ下へ">↓</button>
-			<button type="button" class="remove-item button">削除</button>
+			<input class="apsm-item-title" placeholder="タイトル" value="${escapeAttr(d.title)}">
+			<input class="apsm-item-tag" placeholder="タグ (h2 / span など)" value="${escapeAttr(tag)}">
+			<input class="apsm-item-class" placeholder="class" value="${escapeAttr((d.attributes && d.attributes.class) || "")}">
+			<input class="apsm-item-description" placeholder="いつ使うか（例: 本文の補足に使う。見出しには使わない）" maxlength="200" value="${escapeAttr(d.description)}">
+			<button type="button" class="apsm-move-up button" aria-label="1つ上へ">↑</button>
+			<button type="button" class="apsm-move-down button" aria-label="1つ下へ">↓</button>
+			<button type="button" class="apsm-remove-item button">削除</button>
 		`
 
-		el.querySelector(".remove-item").onclick = () => {
+		el.querySelector(".apsm-remove-item").onclick = () => {
 			el.remove()
 			clearValidation()
 		}
 
 		/* 並べ替え（1.1.0でSortableJSのドラッグから置き換え） */
-		el.querySelector(".move-up").onclick = function(){
+		el.querySelector(".apsm-move-up").onclick = function(){
 			const prev = el.previousElementSibling
 			if(!prev) return
 			el.parentNode.insertBefore(el, prev)
@@ -204,7 +205,7 @@ document.addEventListener("DOMContentLoaded", function () {
 			saveTemp()
 		}
 
-		el.querySelector(".move-down").onclick = function(){
+		el.querySelector(".apsm-move-down").onclick = function(){
 			const next = el.nextElementSibling
 			if(!next) return
 			el.parentNode.insertBefore(next, el)
@@ -315,9 +316,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
 		editorEl.querySelectorAll(".apsm-item").forEach(i=>{
 
-			let tag   = i.querySelector(".item-tag").value.trim().toLowerCase()
-			let cls   = normalizeClassValue(i.querySelector(".item-class").value)
-			let title = i.querySelector(".item-title").value.trim()
+			let tag   = i.querySelector(".apsm-item-tag").value.trim().toLowerCase()
+			let cls   = normalizeClassValue(i.querySelector(".apsm-item-class").value)
+			let title = i.querySelector(".apsm-item-title").value.trim()
+			let description = i.querySelector(".apsm-item-description").value.trim()
 
 			if(!title && !tag && !cls){
 				return
@@ -334,6 +336,10 @@ document.addEventListener("DOMContentLoaded", function () {
 			}
 
 			item.attributes = { class: cls || "" }
+
+			if(description){
+				item.description = description
+			}
 
 			items.push(item)
 

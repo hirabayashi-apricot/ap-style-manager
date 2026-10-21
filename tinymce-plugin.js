@@ -167,7 +167,7 @@
 
 			editor.addButton('apsm_btn_' + i, {
 				text: style.title,
-				tooltip: style.title,
+				tooltip: style.description || style.title,
 				onclick: function () {
 					if (tag === 'a') {
 						var selectedHtml = editor.selection.getContent({ format: 'html' });

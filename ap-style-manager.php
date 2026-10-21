@@ -3,7 +3,7 @@
 Plugin Name: AP Style Tag Manager
 Plugin URI: https://apricot-design.com/
 Description: エディターで使用するスタイルやHTMLテンプレートをJSONで管理し、ボタンから簡単に挿入できるプラグイン
-Version: 1.1.1
+Version: 1.2.0
 Author: Apricot Design
 Author URI: https://apricot-design.com/
 License: GPL2+
@@ -84,9 +84,43 @@ function apsm_find_legacy_json(){
 		$data = json_decode((string) file_get_contents($path), true);
 		if(json_last_error() !== JSON_ERROR_NONE) continue;
 		$data = apsm_sanitize_all_formats_data($data);
-		if(apsm_has_items($data)) return $data;
+		if(apsm_has_items($data)){
+			/* プラグインのフォルダ内のファイルは、移したら名前を変える（「テーマのファイルに戻す」でまた移されないように） */
+			if($path === apsm_json_path() && is_writable($path)){
+				@rename($path, $path . '.migrated');
+			}
+			return $data;
+		}
 	}
 	return null;
+}
+
+/* テーマの apsm.json（子テーマを優先） */
+function apsm_theme_json_path(){
+	$candidates = array_unique([
+		get_stylesheet_directory() . '/apsm.json',
+		get_template_directory() . '/apsm.json',
+	]);
+	foreach($candidates as $path){
+		if(is_readable($path)) return $path;
+	}
+	return null;
+}
+
+/* テーマの apsm.json を読む。読めない・壊れているときは null */
+function apsm_load_theme_json(){
+	$path = apsm_theme_json_path();
+	if($path === null) return null;
+	$data = json_decode((string) file_get_contents($path), true);
+	if(json_last_error() !== JSON_ERROR_NONE || !is_array($data)) return null;
+	return apsm_sanitize_all_formats_data($data);
+}
+
+/* 今の設定がどこから来ているか: db / theme / none */
+function apsm_get_source(){
+	if(is_array(get_option(APSM_OPTION, null))) return 'db';
+	if(apsm_load_theme_json() !== null) return 'theme';
+	return 'none';
 }
 
 /* 設定を保存する。直前の設定は1世代だけ控える */
@@ -191,13 +225,23 @@ function apsm_sanitize_style_item($item){
 	}
 	$class_name = apsm_sanitize_class_list($raw_class_name);
 
-	return [
+	$sanitized = [
 		'title' => $title,
 		$type => $tag,
 		'attributes' => [
 			'class' => $class_name
 		]
 	];
+
+	/* いつ使うか（1.2.0〜）。人とAIが、どの装飾をいつ使うかを判断するための一文 */
+	if(isset($item['description']) && is_string($item['description'])){
+		$description = mb_substr(sanitize_text_field($item['description']), 0, 200);
+		if($description !== ''){
+			$sanitized['description'] = $description;
+		}
+	}
+
+	return $sanitized;
 }
 
 function apsm_normalize_style_formats($styles, &$invalid_count = 0){
@@ -299,14 +343,15 @@ add_action('init', function(){
 function apsm_get_json(){
 	$data = get_option(APSM_OPTION, null);
 
-	/* DBにまだ無い（1.1.0以前からの更新直後）ときは、古いJSONファイルから移す */
+	/* 読む順番: DB（管理画面で保存したもの）→ 1.1.0以前のJSONファイル（見つかればDBへ移す）→ テーマの apsm.json → 空 */
 	if(!is_array($data)){
 		$legacy = apsm_find_legacy_json();
 		if($legacy !== null){
 			apsm_save_formats($legacy);
 			$data = $legacy;
 		} else {
-			$data = [];
+			$theme = apsm_load_theme_json();
+			$data = $theme !== null ? $theme : [];
 		}
 	}
 
@@ -420,6 +465,25 @@ function apsm_admin_page(){
 ?>
 	<div class="wrap">
 		<h1>スタイルタグ管理</h1>
+		<?php
+		$source = apsm_get_source();
+		$theme_path = apsm_theme_json_path();
+		?>
+		<div class="apsm-source">
+			<?php if($source === 'db'){ ?>
+			<p>今の設定: <strong>この画面で保存した内容</strong><?php if($theme_path){ ?>（テーマの <code>apsm.json</code> より優先しています）<?php } ?></p>
+			<?php if($theme_path){ ?>
+			<form method="post" onsubmit="return confirm('この画面で保存した内容を消して、テーマの apsm.json に戻します。よろしいですか？（直前の内容は1世代だけ控えます）');">
+				<?php wp_nonce_field('apsm_reset_to_theme', 'apsm_reset_nonce'); ?>
+				<button type="submit" class="button">テーマのファイルに戻す</button>
+			</form>
+			<?php } ?>
+			<?php } elseif($source === 'theme'){ ?>
+			<p>今の設定: <strong>テーマの <code>apsm.json</code></strong>。この画面で保存すると、以後はこの画面の内容を優先します。</p>
+			<?php } else { ?>
+			<p>今の設定: まだありません。テーマに <code>apsm.json</code> を置くか、この画面で作ってください。</p>
+			<?php } ?>
+		</div>
 		<form method="post">
 			<?php wp_nonce_field('apsm_save_json', 'apsm_nonce'); ?>
 			<select id="apsm-posttype">
@@ -436,13 +500,13 @@ function apsm_admin_page(){
 					<h2 class="apsm-section-title">スタイル</h2>
 					<p class="apsm-section-desc">選択テキストのタグを上書きします</p>
 					<div id="apsm-editor-styles" class="apsm-editor"></div>
-					<button id="add-style" type="button" class="button">＋スタイル追加</button>
+					<button id="apsm-add-style" type="button" class="button">＋スタイル追加</button>
 				</div>
 				<div class="apsm-section">
 					<h2 class="apsm-section-title">ブロック</h2>
 					<p class="apsm-section-desc">タグで囲みます（既存タグを残したまま追加）</p>
 					<div id="apsm-editor-blocks" class="apsm-editor"></div>
-					<button id="add-block" type="button" class="button">＋ブロック追加</button>
+					<button id="apsm-add-block" type="button" class="button">＋ブロック追加</button>
 				</div>
 			</div>
 			<p id="apsm-validation" class="apsm-validation" hidden></p>
@@ -566,6 +630,20 @@ function apsm_handle_save_request(){
 		return;
 	}
 
+	if (isset($_POST['apsm_reset_nonce'])) {
+		if (!wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['apsm_reset_nonce'])), 'apsm_reset_to_theme')) {
+			apsm_admin_notice('セキュリティチェックに失敗しました。', 'error');
+			return;
+		}
+		$current = get_option(APSM_OPTION, null);
+		if (is_array($current)) {
+			update_option(APSM_OPTION_BAK, $current, false);
+		}
+		delete_option(APSM_OPTION);
+		apsm_admin_notice('テーマの apsm.json に戻しました', 'updated');
+		return;
+	}
+
 	if (!isset($_POST['json']) || !isset($_POST['apsm_nonce'])) {
 		return;
 	}
@@ -594,3 +672,8 @@ function apsm_handle_save_request(){
 	apsm_admin_notice('保存しました', 'updated');
 }
 add_action('admin_init', 'apsm_handle_save_request');
+
+/* WP-CLI のコマンド（wp apsm check） */
+if (defined('WP_CLI') && WP_CLI) {
+	require_once __DIR__ . '/cli.php';
+}

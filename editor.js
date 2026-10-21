@@ -334,7 +334,7 @@
 			},
 			'',
 			'',
-			style.title,
+			style.description || style.title,
 			100 + index
 		);
 

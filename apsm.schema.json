@@ -1,0 +1,57 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://github.com/hirabayashi-apricot/ap-style-manager/blob/main/apsm.schema.json",
+	"title": "AP Style Tag Manager の設定（テーマの apsm.json）",
+	"description": "キーは base（すべての投稿タイプで使う）または投稿タイプ名（post・カスタム投稿タイプ）。それぞれに styles（選択した文字のタグを上書きする）と blocks（タグで囲む）を持つ。",
+	"type": "object",
+	"properties": {
+		"$schema": { "type": "string" }
+	},
+	"additionalProperties": { "$ref": "#/$defs/set" },
+	"$defs": {
+		"set": {
+			"type": "object",
+			"properties": {
+				"styles": { "type": "array", "items": { "$ref": "#/$defs/item" } },
+				"blocks": { "type": "array", "items": { "$ref": "#/$defs/item" } }
+			},
+			"additionalProperties": false
+		},
+		"item": {
+			"type": "object",
+			"required": ["title"],
+			"properties": {
+				"title": { "type": "string", "minLength": 1, "description": "エディタのボタンに出る名前" },
+				"block": { "$ref": "#/$defs/tag", "description": "ブロック要素のタグ（h2・p・div など）" },
+				"inline": { "$ref": "#/$defs/tag", "description": "インライン要素のタグ（span・strong・a・img など）" },
+				"attributes": {
+					"type": "object",
+					"properties": {
+						"class": { "type": "string", "pattern": "^([A-Za-z0-9_-]+( [A-Za-z0-9_-]+)*)?$", "description": "付けるクラス。複数は半角スペース区切り" }
+					},
+					"additionalProperties": false
+				},
+				"description": { "type": "string", "maxLength": 200, "description": "いつ使うか。人とAIが使い分けを判断するための一文。エディタのボタンにマウスを乗せると出る" }
+			},
+			"oneOf": [
+				{ "required": ["block"] },
+				{ "required": ["inline"] }
+			],
+			"additionalProperties": false
+		},
+		"tag": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }
+	},
+	"examples": [
+		{
+			"$schema": "https://raw.githubusercontent.com/hirabayashi-apricot/ap-style-manager/main/apsm.schema.json",
+			"base": {
+				"styles": [
+					{ "title": "注釈", "inline": "small", "attributes": { "class": "c-note" }, "description": "本文中の補足に使う。見出しには使わない" }
+				],
+				"blocks": [
+					{ "title": "囲み", "block": "div", "attributes": { "class": "c-box" }, "description": "段落をまとめて目立たせたいときに使う。1記事に2つまで" }
+				]
+			}
+		}
+	]
+}
