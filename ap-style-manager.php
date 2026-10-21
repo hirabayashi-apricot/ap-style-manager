@@ -3,7 +3,7 @@
 Plugin Name: AP Style Tag Manager
 Plugin URI: https://apricot-design.com/
 Description: エディターで使用するスタイルやHTMLテンプレートをJSONで管理し、ボタンから簡単に挿入できるプラグイン
-Version: 1.1.0
+Version: 1.1.1
 Author: Apricot Design
 Author URI: https://apricot-design.com/
 License: GPL2+
@@ -55,8 +55,47 @@ add_action('admin_enqueue_scripts', function ($hook) {
 	);
 });
 /* JSON */
+/* 設定はDB（オプション）に保存する。1.1.0まではプラグインのフォルダ内のJSONに保存していたため、更新のたびに消えていた */
+const APSM_OPTION = 'apsm_style_formats';
+const APSM_OPTION_BAK = 'apsm_style_formats_bak';
+
+/* 1.1.0までの保存先（移行のときだけ読む） */
 function apsm_json_path(){
 	return apsm_path() . 'editor-style-formats.json';
+}
+
+/* 中身（スタイルかブロック）が1つでもあるか */
+function apsm_has_items($data){
+	if(!is_array($data)) return false;
+	foreach($data as $set){
+		if(is_array($set) && (!empty($set['styles']) || !empty($set['blocks']))) return true;
+	}
+	return false;
+}
+
+/* 1.1.0までのJSONファイルから設定を探す。更新の途中でWordPressが残す一時控えも見る */
+function apsm_find_legacy_json(){
+	$candidates = [
+		apsm_json_path(),
+		WP_CONTENT_DIR . '/upgrade-temp-backup/plugins/ap-style-manager/editor-style-formats.json',
+	];
+	foreach($candidates as $path){
+		if(!is_readable($path)) continue;
+		$data = json_decode((string) file_get_contents($path), true);
+		if(json_last_error() !== JSON_ERROR_NONE) continue;
+		$data = apsm_sanitize_all_formats_data($data);
+		if(apsm_has_items($data)) return $data;
+	}
+	return null;
+}
+
+/* 設定を保存する。直前の設定は1世代だけ控える */
+function apsm_save_formats($data){
+	$current = get_option(APSM_OPTION, null);
+	if(is_array($current)){
+		update_option(APSM_OPTION_BAK, $current, false);
+	}
+	update_option(APSM_OPTION, $data, false);
 }
 
 function apsm_is_valid_tag_name($tag){
@@ -248,34 +287,34 @@ function apsm_sanitize_all_formats_data($decoded, &$has_invalid = false){
 	return $decoded;
 }
 
+/* DBにまだ設定が無いときは、表側の表示でも移行を試す。
+   自動更新では、WordPressが更新直後に表側を1回開いて動作を確かめるので、
+   そのとき（一時控えがまだ残っているうち）に古い設定を拾える見込みがある */
+add_action('init', function(){
+	if(get_option(APSM_OPTION, null) === null){
+		apsm_get_json();
+	}
+});
+
 function apsm_get_json(){
-	$path = apsm_json_path();
-	if(file_exists($path)){
-		$json = file_get_contents($path);
-		$data = json_decode($json, true);
-	} else {
-		$data = [];
+	$data = get_option(APSM_OPTION, null);
+
+	/* DBにまだ無い（1.1.0以前からの更新直後）ときは、古いJSONファイルから移す */
+	if(!is_array($data)){
+		$legacy = apsm_find_legacy_json();
+		if($legacy !== null){
+			apsm_save_formats($legacy);
+			$data = $legacy;
+		} else {
+			$data = [];
+		}
 	}
-	if(json_last_error() !== JSON_ERROR_NONE){
-		$data = [];
-	}
-	if(!$data){
-		$data = [];
-	}
+
 	if(!isset($data['base'])){
 		$data['base'] = [];
 	}
 
-	$data = apsm_sanitize_all_formats_data($data);
-
-	file_put_contents(
-		$path,
-		wp_json_encode(
-			$data,
-			JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE
-		)
-	);
-	return $data;
+	return apsm_sanitize_all_formats_data($data);
 }
 
 /* Classic Editor ビジュアルタブ: ツールバーボタン */
@@ -522,15 +561,7 @@ function apsm_handle_save_request(){
 			return;
 		}
 
-		$path = apsm_json_path();
-		if (file_exists($path)) {
-			copy($path, $path . '.bak');
-		}
-
-		file_put_contents(
-			$path,
-			wp_json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
-		);
+		apsm_save_formats($decoded);
 		apsm_admin_notice('JSONをインポートしました', 'updated');
 		return;
 	}
@@ -542,11 +573,6 @@ function apsm_handle_save_request(){
 	if (!wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['apsm_nonce'])), 'apsm_save_json')) {
 		apsm_admin_notice('セキュリティチェックに失敗しました。', 'error');
 		return;
-	}
-
-	$path = apsm_json_path();
-	if (file_exists($path)) {
-		copy($path, $path . '.bak');
 	}
 
 	$json = wp_unslash($_POST['json']);
@@ -564,10 +590,7 @@ function apsm_handle_save_request(){
 		return;
 	}
 
-	file_put_contents(
-		$path,
-		wp_json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
-	);
+	apsm_save_formats($decoded);
 	apsm_admin_notice('保存しました', 'updated');
 }
 add_action('admin_init', 'apsm_handle_save_request');
